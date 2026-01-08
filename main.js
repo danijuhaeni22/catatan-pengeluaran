@@ -51,6 +51,20 @@
 
   const fmtIDR = (n) => "Rp " + Number(n || 0).toLocaleString("id-ID");
 
+  function formatRupiahDigits(raw) {
+    // raw: string apapun -> sisakan angka saja
+    const digits = String(raw || "").replace(/[^\d]/g, "");
+    if (!digits) return "";
+    // format ribuan: 35000 -> 35.000
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
+
+  function parseRupiahToNumber(raw) {
+    // "35.000" -> 35000
+    const digits = String(raw || "").replace(/[^\d]/g, "");
+    return digits ? Number(digits) : 0;
+  }
+
   const parseMonthInput = (val) => {
     const [y, m] = val.split("-").map(Number);
     return { y, m };
@@ -1066,10 +1080,24 @@
       el.q._t = setTimeout(renderAll, 120);
     });
 
+    // Auto-format rupiah saat mengetik
+    el.fAmount.addEventListener("input", () => {
+      const before = el.fAmount.value;
+      const after = formatRupiahDigits(before);
+
+      // jaga caret biar tidak "loncat" parah
+      const pos = el.fAmount.selectionStart || after.length;
+      const diff = after.length - before.length;
+
+      el.fAmount.value = after;
+      const nextPos = Math.max(0, pos + diff);
+      el.fAmount.setSelectionRange(nextPos, nextPos);
+    });
+
     el.form.addEventListener("submit", (e) => {
       e.preventDefault();
       const date = el.fDate.value;
-      const amount = Number(el.fAmount.value || 0);
+      const amount = parseRupiahToNumber(el.fAmount.value);
       const category = el.fCategory.value;
       const method = el.fMethod.value;
       const desc = (el.fDesc.value || "").trim();
