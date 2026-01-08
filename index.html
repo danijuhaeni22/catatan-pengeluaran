@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard Pengeluaran (Mingguan & Bulanan)</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="title">
+          <h1>Dashboard Pengeluaran</h1>
+          <p>
+            Mingguan & bulanan • KPI, tren, kategori, dan detail transaksi (auto
+            simpan).
+          </p>
+        </div>
+        <div class="top-actions">
+          <button id="btnExport" class="mini-btn btn-ghost" type="button">
+            Export CSV
+          </button>
+          <button id="btnReset" class="mini-btn btn-ghost" type="button">
+            Reset Data
+          </button>
+        </div>
+      </header>
+
+      <section class="panel controls" aria-label="Filter">
+        <div class="field">
+          <label for="mode">Mode</label>
+          <select id="mode" class="js-custom-select">
+            <option value="weekly">Mingguan (dalam bulan terpilih)</option>
+            <option value="monthly">Bulanan (dalam tahun terpilih)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="month">Bulan</label>
+          <input id="month" type="month" />
+        </div>
+
+        <div class="field">
+          <label for="week">Minggu ke-</label>
+          <select id="week" class="js-custom-select"></select>
+        </div>
+
+        <div class="field">
+          <label for="catFilter">Kategori</label>
+          <select id="catFilter" class="js-custom-select">
+            <option value="">Semua</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="q">Cari (deskripsi/metode)</label>
+          <input id="q" placeholder="contoh: bensin, gopay, listrik..." />
+        </div>
+      </section>
+
+      <section class="grid-kpi" aria-label="Ringkasan KPI">
+        <div class="kpi panel">
+          <div class="k-label">
+            <span>Total Periode</span>
+            <span id="pillTotal" class="pill">—</span>
+          </div>
+          <div id="kTotal" class="k-value">Rp 0</div>
+          <div id="kTotalSub" class="k-sub">—</div>
+        </div>
+
+        <div class="kpi panel">
+          <div class="k-label">
+            <span>Rata-rata</span>
+            <span id="pillAvg" class="pill">—</span>
+          </div>
+          <div id="kAvg" class="k-value">Rp 0</div>
+          <div id="kAvgSub" class="k-sub">—</div>
+        </div>
+
+        <div class="kpi panel">
+          <div class="k-label">
+            <span>Puncak</span>
+            <span id="pillPeak" class="pill">—</span>
+          </div>
+          <div id="kPeak" class="k-value">Rp 0</div>
+          <div id="kPeakSub" class="k-sub">—</div>
+        </div>
+
+        <div class="kpi panel">
+          <div class="k-label">
+            <span>Kategori Terbesar</span>
+            <span id="pillCat" class="pill">—</span>
+          </div>
+          <div id="kCat" class="k-value">—</div>
+          <div id="kCatSub" class="k-sub">—</div>
+        </div>
+      </section>
+
+      <section class="grid-charts" aria-label="Charts">
+        <div class="panel chart-card">
+          <div class="chart-title">
+            <h2 id="titleTrend">Tren Pengeluaran</h2>
+            <div id="hintTrend" class="hint">—</div>
+          </div>
+          <canvas id="trendChart"></canvas>
+        </div>
+
+        <div class="panel chart-card">
+          <div class="chart-title">
+            <h2>Kategori</h2>
+            <div id="hintCat" class="hint">—</div>
+          </div>
+          <canvas id="catChart"></canvas>
+        </div>
+      </section>
+
+      <section class="grid-bottom" aria-label="Form & Table">
+        <div class="panel form-card">
+          <div class="chart-title">
+            <h2>Tambah Pengeluaran</h2>
+            <div class="hint">Data tersimpan di browser (localStorage)</div>
+          </div>
+
+          <form id="formExpense" autocomplete="off">
+            <div class="form-grid">
+              <div class="field">
+                <label for="fDate">Tanggal</label>
+                <input id="fDate" type="date" required />
+              </div>
+
+              <div class="field">
+                <label for="fAmount">Jumlah (Rp)</label>
+                <input
+                  id="fAmount"
+                  type="number"
+                  min="0"
+                  step="1000"
+                  placeholder="contoh: 35000"
+                  required
+                />
+              </div>
+
+              <div class="field">
+                <label for="fCategory">Kategori</label>
+                <select
+                  id="fCategory"
+                  class="js-custom-select"
+                  required
+                ></select>
+              </div>
+
+              <div class="field">
+                <label for="fMethod">Metode</label>
+                <select id="fMethod" class="js-custom-select" required>
+                  <option value="Cash">Cash</option>
+                  <option value="E-Wallet">E-Wallet</option>
+                  <option value="Transfer">Transfer</option>
+                  <option value="Kartu">Kartu</option>
+                  <option value="Lainnya">Lainnya</option>
+                </select>
+              </div>
+
+              <div class="field full">
+                <label for="fDesc">Deskripsi</label>
+                <input
+                  id="fDesc"
+                  placeholder="contoh: makan siang, bensin, listrik, belanja..."
+                />
+              </div>
+
+              <div class="row-actions full">
+                <button id="btnSeed" class="btn-ghost" type="button">
+                  Isi Sample Data
+                </button>
+                <button type="submit">Tambah</button>
+              </div>
+            </div>
+          </form>
+
+          <div class="foot">
+            Tip: untuk edit kategori, ubah array
+            <span class="muted">DEFAULT_CATEGORIES</span> di main.js
+          </div>
+        </div>
+
+        <div class="panel table-card">
+          <div class="chart-title">
+            <h2>Detail Transaksi</h2>
+            <div id="hintTable" class="hint">—</div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 130px">Tanggal</th>
+                  <th style="width: 140px">Kategori</th>
+                  <th>Deskripsi</th>
+                  <th style="width: 120px">Metode</th>
+                  <th style="width: 140px; text-align: right">Jumlah</th>
+                  <th style="width: 110px; text-align: right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+
+          <div class="foot">
+            Klik hapus untuk menghapus 1 transaksi. Export CSV dari tombol atas.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="./main.js"></script>
+  </body>
+</html>
