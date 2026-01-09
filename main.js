@@ -3,6 +3,8 @@
    * CONFIG
    ********************/
   const STORAGE_KEY = "expense_dashboard_v1";
+  const STORAGE_KEY_SHADOW = "expense_dashboard_v1_shadow";
+  const STORAGE_KEY_META = "expense_dashboard_v1_meta";
   const DEFAULT_CATEGORIES = [
     "Makan",
     "Transport",
@@ -127,6 +129,47 @@
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  }
+
+  function safeJsonParse(raw) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  function normalize(arr) {
+    return (Array.isArray(arr) ? arr : [])
+      .map((x) => ({
+        id: String(x?.id || crypto.randomUUID()),
+        date: String(x?.date || ""),
+        category: String(x?.category || "Lainnya"),
+        desc: String(x?.desc || ""),
+        amount: Number(x?.amount || 0),
+        method: String(x?.method || "Cash"),
+      }))
+      .filter((x) => !!x.date && !Number.isNaN(new Date(x.date).getTime()));
+  }
+
+  function saveMeta(list) {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY_META,
+        JSON.stringify({
+          v: 1,
+          savedAt: Date.now(),
+          count: Array.isArray(list) ? list.length : 0,
+        })
+      );
+    } catch {}
+  }
+
+  async function tryPersistStorage() {
+    try {
+      if (!navigator.storage || !navigator.storage.persist) return;
+      await navigator.storage.persist();
+    } catch {}
   }
 
   /********************
@@ -429,26 +472,37 @@
   function loadData() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return [];
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) return [];
-      return arr
-        .map((x) => ({
-          id: String(x.id || crypto.randomUUID()),
-          date: String(x.date),
-          category: String(x.category || "Lainnya"),
-          desc: String(x.desc || ""),
-          amount: Number(x.amount || 0),
-          method: String(x.method || "Cash"),
-        }))
-        .filter((x) => !!x.date && !Number.isNaN(new Date(x.date).getTime()));
+      const arr = safeJsonParse(raw);
+      const list = normalize(arr);
+      if (list.length) return list;
+
+      // fallback: shadow copy (kalau data utama kosong/korup)
+      const raw2 = localStorage.getItem(STORAGE_KEY_SHADOW);
+      const arr2 = safeJsonParse(raw2);
+      const list2 = normalize(arr2);
+      if (!list2.length) return [];
+
+      // restore balik ke key utama
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list2));
+      } catch {}
+      return list2;
     } catch {
       return [];
     }
   }
 
-  const saveData = (list) =>
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  const saveData = (list) => {
+    const normalized = normalize(list);
+    const json = JSON.stringify(normalized);
+    localStorage.setItem(STORAGE_KEY, json);
+
+    // shadow + meta (lebih aman dari kasus korup/overwrite)
+    try {
+      localStorage.setItem(STORAGE_KEY_SHADOW, json);
+    } catch {}
+    saveMeta(normalized);
+  };
 
   function addExpense(item) {
     const list = loadData();
@@ -515,6 +569,49 @@
   }
 
   /********************
+   * BACKUP / RESTORE
+   ********************/
+  function exportBackupJson() {
+    const list = loadData();
+    const payload = {
+      v: 1,
+      exportedAt: new Date().toISOString(),
+      key: STORAGE_KEY,
+      data: list,
+    };
+    const fname = `backup_pengeluaran_${toISODate(new Date())}.json`;
+    downloadText(fname, JSON.stringify(payload, null, 2));
+  }
+
+  function importBackupJson(file, { mode = "merge" } = {}) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const obj = safeJsonParse(reader.result);
+      const incoming = obj?.data;
+      if (!Array.isArray(incoming)) {
+        alert("File backup tidak valid.");
+        return;
+      }
+
+      const normalized = normalize(incoming);
+
+      if (mode === "replace") {
+        saveData(normalized);
+      } else {
+        // merge by id (incoming menang kalau id sama)
+        const cur = loadData();
+        const byId = new Map(cur.map((x) => [x.id, x]));
+        for (const x of normalized) byId.set(x.id, x);
+        saveData(Array.from(byId.values()));
+      }
+
+      renderAll();
+      alert("Backup berhasil di-restore.");
+    };
+    reader.readAsText(file);
+  }
+
+  /********************
    * UI ELEMENTS
    ********************/
   const el = {
@@ -555,6 +652,8 @@
     btnSeed: document.getElementById("btnSeed"),
     btnReset: document.getElementById("btnReset"),
     btnExport: document.getElementById("btnExport"),
+    btnBackup: document.getElementById("btnBackup"),
+    fileImport: document.getElementById("fileImport"),
   };
 
   function initMonthAndDate() {
@@ -747,8 +846,27 @@
   /********************
    * CHARTS
    ********************/
+
   let trendChart = null;
   let catChart = null;
+
+  // ✅ Keep charts responsive on monitor resize / moving window between screens
+  function debounce(fn, wait = 160) {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), wait);
+    };
+  }
+
+  const requestChartResize = debounce(() => {
+    try {
+      trendChart && trendChart.resize();
+    } catch {}
+    try {
+      catChart && catChart.resize();
+    } catch {}
+  }, 160);
 
   function baseXYChartOptions() {
     return {
@@ -1129,7 +1247,22 @@
       );
       if (!ok) return;
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY_SHADOW);
+      localStorage.removeItem(STORAGE_KEY_META);
       renderAll();
+    });
+
+    el.btnBackup.addEventListener("click", exportBackupJson);
+
+    el.fileImport.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+
+      // merge by default (lebih aman). Kalau mau replace: ubah jadi "replace".
+      importBackupJson(f, { mode: "merge" });
+
+      // reset input supaya bisa import file yang sama lagi
+      e.target.value = "";
     });
 
     el.btnExport.addEventListener("click", () => {
@@ -1158,6 +1291,9 @@
    * BOOT
    ********************/
   function boot() {
+    // Kurangi risiko storage di-evict otomatis (tidak bisa mencegah "Clear browsing data")
+    tryPersistStorage();
+
     initMonthAndDate();
     renderCategoryOptions();
     renderWeeks();
@@ -1196,6 +1332,15 @@
     }
 
     renderAll();
+
+    // Resize handling (Chart.js sometimes needs explicit resize)
+    window.addEventListener("resize", requestChartResize, { passive: true });
+
+    // Also observe the chart containers (works better than window resize)
+    try {
+      const ro = new ResizeObserver(() => requestChartResize());
+      document.querySelectorAll(".chart-card").forEach((el) => ro.observe(el));
+    } catch {}
   }
 
   boot();
